@@ -20,9 +20,10 @@ const IS_PRODUCTION = ENV === 'production' ||
 console.log(`Running in ${IS_PRODUCTION ? 'PRODUCTION' : 'DEVELOPMENT'} mode`);
 
 // API URLs based on environment
-const BUBBLE_API_URL = IS_PRODUCTION 
-  ? 'https://projectacular.bubbleapps.io/version-live/api/1.1/wf/slack_message'
-  : 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf/slack_message';
+// You can override this with an environment variable
+const BUBBLE_API_URL = process.env.BUBBLE_API_URL || 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf/slack_message';
+
+console.log(`Using Bubble API URL: ${BUBBLE_API_URL}`);
 
 const BUBBLE_API_KEY = process.env.BUBBLE_API_KEY || '5f295f248f6872648f79cf0ff089cac0';
 
