@@ -90,25 +90,8 @@ async function handleBotMention(event) {
   
   console.log(`Received mention: "${messageContent}" from user ${userId} in channel ${channelId}`);
   
-  // Forward the message to Bubble
-  await forwardMessageToBubble(messageContent, userId, channelId, thread_ts);
-}
-
-// Function to handle direct messages to the bot
-async function handleDirectMessage(event) {
-  const text = event.text;
-  const channelId = event.channel;
-  const userId = event.user;
-  const thread_ts = event.thread_ts || event.ts; // Use thread_ts if it exists, otherwise use ts
-  
-  console.log(`Received DM: "${text}" from user ${userId} in channel ${channelId}`);
-  
-  // Forward the entire message to Bubble
-  await forwardMessageToBubble(text, userId, channelId, thread_ts);
-}
-
 // Forward message to Bubble and handle response
-async function forwardMessageToBubble(messageContent, userId, channelId, thread_ts) {
+async function forwardMessageToBubble(messageContent, userId, channelId, thread_ts, mentionedUsers = []) {
   try {
     console.log(`Forwarding message to Bubble: "${messageContent}"`);
     
@@ -121,7 +104,8 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
       user_id: userId,
       user_name: userInfo ? userInfo.real_name || userInfo.name : userId,
       channel_id: channelId,
-      thread_ts: thread_ts
+      thread_ts: thread_ts,
+      mentioned_users: mentionedUsers // Include the mentioned users array
     };
     
     // Double check the URL to make sure it's correct
@@ -189,6 +173,7 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
   }
 }
 
+  
 // Helper function to get Slack user information
 async function getSlackUserInfo(userId) {
   try {
