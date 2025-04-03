@@ -21,21 +21,33 @@ const verifySlackRequest = (req, res, next) => {
   next();
 };
 
-// Endpoint for Slack events
-app.post('/slack/events', verifySlackRequest, async (req, res) => {
-  // Respond quickly to Slack to acknowledge receipt
-  res.status(200).send();
+// Endpoint for Slack events and verification
+app.post('/slack/events', (req, res) => {
+  // Check if this is a verification request
+  if (req.body.type === 'url_verification') {
+    // Respond with the challenge token
+    console.log("Received verification challenge from Slack");
+    return res.json({ challenge: req.body.challenge });
+  }
   
-  const event = req.body.event;
-  
-  // Handle app_mention events (when someone @mentions the bot)
-  if (event && event.type === 'app_mention') {
-    try {
-      await handleBotMention(event);
-    } catch (error) {
-      console.error('Error handling mention:', error);
+  // Once verified, normal event handling
+  if (req.body.event) {
+    console.log("Received event:", req.body.event.type);
+    
+    // Handle app_mention events (when someone @mentions the bot)
+    if (req.body.event.type === 'app_mention') {
+      try {
+        handleBotMention(req.body.event);
+        return res.status(200).send();
+      } catch (error) {
+        console.error('Error handling mention:', error);
+        return res.status(500).send();
+      }
     }
   }
+  
+  // Default response for other events
+  return res.status(200).send();
 });
 
 // Function to handle when the bot is mentioned
