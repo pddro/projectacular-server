@@ -77,7 +77,9 @@ async function handleBotMention(event) {
   const userId = event.user;
   const thread_ts = event.thread_ts || event.ts;
   
-  // Parse the bot mention
+  console.log(`Raw message from Slack: "${text}"`);
+  
+  // Find and extract the bot mention
   const botMentionMatch = text.match(/<@([A-Z0-9]+)>/);
   if (!botMentionMatch) {
     console.log("Could not extract bot user ID from mention");
@@ -85,30 +87,40 @@ async function handleBotMention(event) {
   }
   
   const botUserId = botMentionMatch[1];
+  console.log(`Bot User ID: ${botUserId}`);
   
   // Extract the message without the bot mention
+  // This keeps the raw format of other user mentions for Claude to process
   const messageContent = text.replace(`<@${botUserId}>`, '').trim();
+  console.log(`Message without bot mention: "${messageContent}"`);
   
   // Extract all mentioned users (except the bot)
   const mentionedUsers = [];
+  // This regex will find all user mentions in the format <@USERID>
   const mentionRegex = /<@([A-Z0-9]+)>/g;
-  let match;
   
-  // Create a copy of text to work with
-  let remainingText = text;
+  // We use a different approach to find all matches
+  const matches = [...messageContent.matchAll(mentionRegex)];
+  console.log(`Found ${matches.length} user mentions in message`);
   
-  // Find all mentions in the message
-  while ((match = mentionRegex.exec(remainingText)) !== null) {
+  for (const match of matches) {
     const mentionedUserId = match[1];
-    // Skip the bot itself
+    // Skip the bot itself (although it should already be removed)
     if (mentionedUserId !== botUserId) {
+      console.log(`Processing mentioned user: ${mentionedUserId}`);
       try {
-        // Get user info
+        // Get user info from Slack
         const userInfo = await getSlackUserInfo(mentionedUserId);
-        mentionedUsers.push({
-          id: mentionedUserId,
-          name: userInfo ? userInfo.real_name || userInfo.name : mentionedUserId
-        });
+        if (userInfo) {
+          console.log(`User info retrieved: ${userInfo.name || userInfo.real_name || 'Unknown'}`);
+          mentionedUsers.push({
+            id: mentionedUserId,
+            name: userInfo.real_name || userInfo.name || mentionedUserId
+          });
+        } else {
+          console.log(`No user info found for ID: ${mentionedUserId}`);
+          mentionedUsers.push({ id: mentionedUserId, name: mentionedUserId });
+        }
       } catch (error) {
         console.error(`Error getting info for user ${mentionedUserId}:`, error.message);
         // Still add the user ID even if we can't get their info
@@ -117,9 +129,9 @@ async function handleBotMention(event) {
     }
   }
   
-  console.log(`Forwarding message with ${mentionedUsers.length} mentioned users`);
+  console.log(`Forwarding message with ${mentionedUsers.length} mentioned users:`, JSON.stringify(mentionedUsers));
   
-  // Pass everything to Bubble - the original message and mentioned users
+  // Pass everything to Bubble - the original message content (with mentions intact) and mentioned users array
   await forwardMessageToBubble(messageContent, userId, channelId, thread_ts, mentionedUsers);
 }
 
@@ -140,15 +152,21 @@ async function handleDirectMessage(event) {
 async function forwardMessageToBubble(messageContent, userId, channelId, thread_ts, mentionedUsers = []) {
   try {
     console.log(`Forwarding message to Bubble: "${messageContent}"`);
+    console.log(`Message sender: ${userId}`);
+    console.log(`Message channel: ${channelId}`);
+    console.log(`Thread timestamp: ${thread_ts || 'none'}`);
+    console.log(`Mentioned users: ${JSON.stringify(mentionedUsers)}`);
     
     // Get user information to include with the message
     const userInfo = await getSlackUserInfo(userId);
+    const userName = userInfo ? userInfo.real_name || userInfo.name : userId;
+    console.log(`Sender name: ${userName}`);
     
     // Prepare data for Bubble
     const messageData = {
       message: messageContent,
       user_id: userId,
-      user_name: userInfo ? userInfo.real_name || userInfo.name : userId,
+      user_name: userName,
       channel_id: channelId,
       thread_ts: thread_ts,
       mentioned_users: mentionedUsers // Include the mentioned users array
@@ -156,8 +174,9 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
     
     // Double check the URL to make sure it's correct
     const fullUrl = 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf/slack_message';
-    console.log(`Posting to Bubble URL (hardcoded): ${fullUrl}`);
+    console.log(`Posting to Bubble URL: ${fullUrl}`);
     console.log(`Using API Key: ${BUBBLE_API_KEY.substring(0, 5)}...`);
+    console.log(`Full message data being sent:`, JSON.stringify(messageData, null, 2));
     
     let response;
     
@@ -222,18 +241,38 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
 // Helper function to get Slack user information
 async function getSlackUserInfo(userId) {
   try {
-    const response = await axios.get(`https://slack.com/api/users.info?user=${userId}`, {
+    console.log(`Fetching user info for Slack user ID: ${userId}`);
+    
+    // Check if SLACK_BOT_TOKEN is set
+    if (!SLACK_BOT_TOKEN) {
+      console.error('SLACK_BOT_TOKEN is not set. Cannot fetch user info.');
+      return null;
+    }
+    
+    const endpoint = `https://slack.com/api/users.info?user=${userId}`;
+    console.log(`Calling Slack API: ${endpoint}`);
+    
+    const response = await axios.get(endpoint, {
       headers: {
         'Authorization': `Bearer ${SLACK_BOT_TOKEN}`
       }
     });
     
+    console.log(`Slack API response status: ${response.status}`);
+    
     if (response.data && response.data.ok && response.data.user) {
+      console.log(`User info found: ${response.data.user.name} (${response.data.user.real_name || 'No real name'})`);
       return response.data.user;
+    } else {
+      console.error('Failed to get user info:', response.data.error || 'Unknown error');
+      return null;
     }
-    return null;
   } catch (error) {
-    console.error('Error fetching user info:', error.message);
+    console.error('Error fetching user info from Slack API:', error.message);
+    if (error.response) {
+      console.error('Response data:', error.response.data);
+      console.error('Response status:', error.response.status);
+    }
     return null;
   }
 }
