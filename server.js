@@ -21,7 +21,7 @@ const IS_PRODUCTION = ENV === 'production' ||
 console.log(`Running in ${IS_PRODUCTION ? 'PRODUCTION' : 'DEVELOPMENT'} mode`);
 
 // IMPORTANT: Hardcoded full URL to the correct endpoint
-const BUBBLE_API_URL = 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf/slack_message';
+const BUBBLE_API_URL = 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf/slack_message/initialize';
 
 console.log(`Using Bubble API URL: ${BUBBLE_API_URL}`);
 
