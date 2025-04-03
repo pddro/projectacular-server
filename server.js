@@ -19,9 +19,8 @@ const IS_PRODUCTION = ENV === 'production' ||
 
 console.log(`Running in ${IS_PRODUCTION ? 'PRODUCTION' : 'DEVELOPMENT'} mode`);
 
-// API URLs based on environment
-// You can override this with an environment variable
-const BUBBLE_API_URL = process.env.BUBBLE_API_URL || 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf/slack_message';
+// IMPORTANT: Hardcoded full URL to the correct endpoint
+const BUBBLE_API_URL = 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf/slack_message';
 
 console.log(`Using Bubble API URL: ${BUBBLE_API_URL}`);
 
@@ -29,14 +28,6 @@ const BUBBLE_API_KEY = process.env.BUBBLE_API_KEY || '5f295f248f6872648f79cf0ff0
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-
-// Verify Slack requests (simplified for now)
-const verifySlackRequest = (req, res, next) => {
-  // Implementation of Slack's signing secret verification
-  // https://api.slack.com/authentication/verifying-requests-from-slack
-  // Note: For production, implement proper request verification here
-  next();
-};
 
 // Endpoint for Slack events and verification
 app.post('/slack/events', (req, res) => {
@@ -133,15 +124,17 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
       thread_ts: thread_ts
     };
     
-    // Log the exact URL and data being sent
-    console.log(`Posting to Bubble URL: ${BUBBLE_API_URL}`);
+    // Double check the URL to make sure it's correct
+    const fullUrl = 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf/slack_message';
+    console.log(`Posting to Bubble URL (hardcoded): ${fullUrl}`);
     console.log(`Using API Key: ${BUBBLE_API_KEY.substring(0, 5)}...`);
     
     let response;
+    
     try {
       // First try: Bearer token method
       console.log('Attempting Bearer token authentication...');
-      response = await axios.post(BUBBLE_API_URL, messageData, {
+      response = await axios.post(fullUrl, messageData, {
         headers: {
           'Authorization': `Bearer ${BUBBLE_API_KEY}`,
           'Content-Type': 'application/json'
@@ -150,8 +143,15 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
       console.log('Bubble response successful with Bearer token');
     } catch (authError) {
       console.log('Bearer token auth failed, trying API key in URL...');
+      // Log the full error for debugging
+      console.error('Auth Error:', authError.message);
+      if (authError.response) {
+        console.error('Error status:', authError.response.status);
+        console.error('Error data:', authError.response.data);
+      }
+      
       // Second try: API key as query parameter
-      response = await axios.post(`${BUBBLE_API_URL}?api_key=${BUBBLE_API_KEY}`, messageData, {
+      response = await axios.post(`${fullUrl}?api_key=${BUBBLE_API_KEY}`, messageData, {
         headers: {
           'Content-Type': 'application/json'
         }
