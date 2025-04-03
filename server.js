@@ -8,7 +8,16 @@ const PORT = process.env.PORT || 3000;
 // Your configuration - using environment variables
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+// Check for any production/live environment indicator
+// This handles multiple possible environment variable formats
+const ENV = (process.env.NODE_ENV || '').toLowerCase();
+const IS_PRODUCTION = ENV === 'production' || 
+                      ENV === 'live' || 
+                      process.env.ENVIRONMENT === 'PRODUCTION' || 
+                      process.env.ENVIRONMENT === 'LIVE';
+
+console.log(`Running in ${IS_PRODUCTION ? 'PRODUCTION' : 'DEVELOPMENT'} mode`);
 
 // API URLs based on environment
 const BUBBLE_API_URL = IS_PRODUCTION 
