@@ -75,21 +75,67 @@ async function handleBotMention(event) {
   const text = event.text;
   const channelId = event.channel;
   const userId = event.user;
-  const thread_ts = event.thread_ts || event.ts; // Use thread_ts if it exists, otherwise use ts
+  const thread_ts = event.thread_ts || event.ts;
   
-  // Parse the command from the message (remove the bot mention part)
-  const botMentionMatch = event.text.match(/<@([A-Z0-9]+)>/);
+  // Parse the bot mention
+  const botMentionMatch = text.match(/<@([A-Z0-9]+)>/);
   if (!botMentionMatch) {
     console.log("Could not extract bot user ID from mention");
     return;
   }
   
   const botUserId = botMentionMatch[1];
-  // Extract the full message without the bot mention
+  
+  // Extract the message without the bot mention
   const messageContent = text.replace(`<@${botUserId}>`, '').trim();
   
-  console.log(`Received mention: "${messageContent}" from user ${userId} in channel ${channelId}`);
+  // Extract all mentioned users (except the bot)
+  const mentionedUsers = [];
+  const mentionRegex = /<@([A-Z0-9]+)>/g;
+  let match;
   
+  // Create a copy of text to work with
+  let remainingText = text;
+  
+  // Find all mentions in the message
+  while ((match = mentionRegex.exec(remainingText)) !== null) {
+    const mentionedUserId = match[1];
+    // Skip the bot itself
+    if (mentionedUserId !== botUserId) {
+      try {
+        // Get user info
+        const userInfo = await getSlackUserInfo(mentionedUserId);
+        mentionedUsers.push({
+          id: mentionedUserId,
+          name: userInfo ? userInfo.real_name || userInfo.name : mentionedUserId
+        });
+      } catch (error) {
+        console.error(`Error getting info for user ${mentionedUserId}:`, error.message);
+        // Still add the user ID even if we can't get their info
+        mentionedUsers.push({ id: mentionedUserId, name: mentionedUserId });
+      }
+    }
+  }
+  
+  console.log(`Forwarding message with ${mentionedUsers.length} mentioned users`);
+  
+  // Pass everything to Bubble - the original message and mentioned users
+  await forwardMessageToBubble(messageContent, userId, channelId, thread_ts, mentionedUsers);
+}
+
+// Function to handle direct messages to the bot
+async function handleDirectMessage(event) {
+  const text = event.text;
+  const channelId = event.channel;
+  const userId = event.user;
+  const thread_ts = event.thread_ts || event.ts; // Use thread_ts if it exists, otherwise use ts
+  
+  console.log(`Received DM: "${text}" from user ${userId} in channel ${channelId}`);
+  
+  // Forward the entire message to Bubble
+  await forwardMessageToBubble(text, userId, channelId, thread_ts, []);
+}
+
 // Forward message to Bubble and handle response
 async function forwardMessageToBubble(messageContent, userId, channelId, thread_ts, mentionedUsers = []) {
   try {
@@ -173,7 +219,6 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
   }
 }
 
-  
 // Helper function to get Slack user information
 async function getSlackUserInfo(userId) {
   try {
