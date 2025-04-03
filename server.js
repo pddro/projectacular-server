@@ -8,13 +8,19 @@ const PORT = process.env.PORT || 3000;
 // Your configuration - using environment variables
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
-const BUBBLE_API_URL = process.env.BUBBLE_API_URL || 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+// API URLs based on environment
+const BUBBLE_API_URL = IS_PRODUCTION 
+  ? 'https://projectacular.bubbleapps.io/version-live/api/1.1/wf/slack_message'
+  : 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf/slack_message';
+
 const BUBBLE_API_KEY = process.env.BUBBLE_API_KEY || '5f295f248f6872648f79cf0ff089cac0';
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Verify Slack requests 
+// Verify Slack requests (simplified for now)
 const verifySlackRequest = (req, res, next) => {
   // Implementation of Slack's signing secret verification
   // https://api.slack.com/authentication/verifying-requests-from-slack
@@ -65,10 +71,10 @@ app.post('/slack/events', (req, res) => {
 
 // Function to handle when the bot is mentioned in a channel
 async function handleBotMention(event) {
-  // Extract the text after the bot mention
   const text = event.text;
   const channelId = event.channel;
   const userId = event.user;
+  const thread_ts = event.thread_ts || event.ts; // Use thread_ts if it exists, otherwise use ts
   
   // Parse the command from the message (remove the bot mention part)
   const botMentionMatch = event.text.match(/<@([A-Z0-9]+)>/);
@@ -78,12 +84,13 @@ async function handleBotMention(event) {
   }
   
   const botUserId = botMentionMatch[1];
-  const command = text.replace(`<@${botUserId}>`, '').trim();
+  // Extract the full message without the bot mention
+  const messageContent = text.replace(`<@${botUserId}>`, '').trim();
   
-  console.log(`Received mention command: "${command}" from user ${userId} in channel ${channelId}`);
+  console.log(`Received mention: "${messageContent}" from user ${userId} in channel ${channelId}`);
   
-  // Process the command
-  await processCommand(command, channelId, userId);
+  // Forward the message to Bubble
+  await forwardMessageToBubble(messageContent, userId, channelId, thread_ts);
 }
 
 // Function to handle direct messages to the bot
@@ -91,105 +98,51 @@ async function handleDirectMessage(event) {
   const text = event.text;
   const channelId = event.channel;
   const userId = event.user;
+  const thread_ts = event.thread_ts || event.ts; // Use thread_ts if it exists, otherwise use ts
   
   console.log(`Received DM: "${text}" from user ${userId} in channel ${channelId}`);
   
-  // For DMs, we use the entire message as the command
-  await processCommand(text, channelId, userId);
+  // Forward the entire message to Bubble
+  await forwardMessageToBubble(text, userId, channelId, thread_ts);
 }
 
-// Process commands from both mentions and DMs
-async function processCommand(text, channelId, userId) {
-  if (text.startsWith('fetch')) {
-    // Handle data fetching commands
-    await handleFetchCommand(text, channelId);
-  } else if (text.toLowerCase().startsWith('create task')) {
-    // Handle create task command
-    await handleCreateTaskCommand(text, channelId, userId);
-  } else if (text.startsWith('do')) {
-    // Handle action commands
-    await handleActionCommand(text, channelId);
-  } else if (text.toLowerCase() === 'help') {
-    // Provide help information
-    await sendSlackMessage(channelId, 
-      "Here's how you can use me:\n\n" +
-      "• `fetch [data]` - Get data from Projectacular\n" +
-      "• `create task \"Task name\" [description]` - Create a new task\n" +
-      "• `do [action]` - Perform an action in Projectacular\n\n" +
-      "For example:\n" +
-      "• `fetch tasks` - Get a list of tasks\n" +
-      "• `fetch projects` - Get a list of projects\n" +
-      "• `create task \"New homepage design\" priority:high assignee:@john` - Create a new task"
-    );
-  } else {
-    // Unknown command
-    await sendSlackMessage(channelId, 
-      "Sorry, I didn't understand that command. Try `fetch [data]`, `create task [name]`, or type `help` for more information.");
-  }
-}
-
-// Handle create task commands
-async function handleCreateTaskCommand(command, channelId, userId) {
+// Forward message to Bubble and handle response
+async function forwardMessageToBubble(messageContent, userId, channelId, thread_ts) {
   try {
-    console.log(`Processing create task command: ${command}`);
+    console.log(`Forwarding message to Bubble: "${messageContent}"`);
     
-    // Extract task name using regex to handle quoted task names
-    // This regex looks for text between quotes after "create task"
-    const taskNameMatch = command.match(/create task\s+"([^"]+)"/i);
-    let taskName, taskDescription;
-    
-    if (taskNameMatch && taskNameMatch[1]) {
-      taskName = taskNameMatch[1].trim();
-      
-      // Anything after the quoted task name can be considered description or metadata
-      const afterTaskName = command.substring(command.indexOf(taskNameMatch[0]) + taskNameMatch[0].length).trim();
-      if (afterTaskName) {
-        taskDescription = afterTaskName;
-      }
-    } else {
-      // If no quoted task name, just take everything after "create task" as the name
-      taskName = command.replace(/create task/i, '').trim();
-      taskDescription = '';
-    }
-    
-    if (!taskName) {
-      await sendSlackMessage(channelId, "Please provide a task name. Example: `create task \"Design homepage\"`");
-      return;
-    }
-    
-    console.log(`Creating task "${taskName}" with description "${taskDescription || 'None'}"`);
-    
-    // Get user information to include in the task
+    // Get user information to include with the message
     const userInfo = await getSlackUserInfo(userId);
     
-    // Prepare task data
-    const taskData = {
-      name: taskName,
-      description: taskDescription || '',
-      created_by: userId,
-      creator_name: userInfo ? userInfo.real_name || userInfo.name : userId,
-      created_from: 'slack',
-      channel_id: channelId
+    // Prepare data for Bubble
+    const messageData = {
+      message: messageContent,
+      user_id: userId,
+      user_name: userInfo ? userInfo.real_name || userInfo.name : userId,
+      channel_id: channelId,
+      thread_ts: thread_ts
     };
     
     // Send to Bubble API
-    const response = await axios.post(`${BUBBLE_API_URL}/create_task`, taskData, {
+    const response = await axios.post(BUBBLE_API_URL, messageData, {
       headers: {
         'Authorization': `Bearer ${BUBBLE_API_KEY}`,
         'Content-Type': 'application/json'
       }
     });
     
-    console.log('Task creation response:', response.data);
+    console.log('Bubble response:', response.data);
     
-    if (response.data && response.data.success) {
-      await sendSlackMessage(channelId, `✅ Task "${taskName}" created successfully! Task ID: ${response.data.task_id || 'N/A'}`);
+    // Check if Bubble returned a response to send back to Slack
+    if (response.data && response.data.status === 'success' && response.data.response && response.data.response.response) {
+      // Send the response back to Slack
+      await sendSlackMessage(channelId, response.data.response.response, thread_ts);
     } else {
-      throw new Error('Bubble API did not return success');
+      console.log('No response message from Bubble or unexpected response format');
     }
   } catch (error) {
-    console.error('Error creating task:', error.message);
-    await sendSlackMessage(channelId, `⚠️ Error creating task: ${error.message}. Please try again later.`);
+    console.error('Error forwarding message to Bubble:', error.message);
+    await sendSlackMessage(channelId, `Sorry, there was an error processing your request. Please try again later.`, thread_ts);
   }
 }
 
@@ -212,70 +165,22 @@ async function getSlackUserInfo(userId) {
   }
 }
 
-// Handle commands that fetch data from Bubble
-async function handleFetchCommand(command, channelId) {
-  // Parse what data to fetch (e.g., "fetch users", "fetch tasks", etc.)
-  const dataType = command.replace('fetch', '').trim();
-  
-  try {
-    console.log(`Attempting to fetch ${dataType} from Bubble`);
-    
-    // Call Bubble.io API to get the requested data
-    const response = await axios.get(`${BUBBLE_API_URL}/data/${dataType}`, {
-      headers: {
-        'Authorization': `Bearer ${BUBBLE_API_KEY}`
-      }
-    });
-    
-    console.log(`Successfully fetched ${dataType} from Bubble`);
-    
-    // Format the response data for Slack
-    const formattedData = formatBubbleData(response.data, dataType);
-    
-    // Send the formatted data back to Slack
-    await sendSlackMessage(channelId, formattedData);
-  } catch (error) {
-    console.error(`Error fetching ${dataType} from Bubble:`, error.message);
-    await sendSlackMessage(channelId, `Error fetching ${dataType}. Please try again later.`);
-  }
-}
-
-// Handle commands that perform actions in Bubble
-async function handleActionCommand(command, channelId) {
-  // Parse the action to perform
-  const action = command.replace('do', '').trim();
-  
-  try {
-    console.log(`Attempting to perform action ${action} in Bubble`);
-    
-    // Call Bubble.io API to perform the action
-    const response = await axios.post(`${BUBBLE_API_URL}/action/${action}`, {
-      // Include any parameters needed for the action
-    }, {
-      headers: {
-        'Authorization': `Bearer ${BUBBLE_API_KEY}`
-      }
-    });
-    
-    console.log(`Action ${action} performed successfully`);
-    
-    // Send confirmation to Slack
-    await sendSlackMessage(channelId, `Action "${action}" has been performed successfully!`);
-  } catch (error) {
-    console.error(`Error performing action ${action} in Bubble:`, error.message);
-    await sendSlackMessage(channelId, `Error performing "${action}". Please try again later.`);
-  }
-}
-
 // Helper function to send messages to Slack
-async function sendSlackMessage(channelId, text) {
+async function sendSlackMessage(channelId, text, thread_ts = null) {
   try {
     console.log(`Sending message to channel ${channelId}`);
     
-    await axios.post('https://slack.com/api/chat.postMessage', {
+    const messagePayload = {
       channel: channelId,
       text: text
-    }, {
+    };
+    
+    // If thread_ts is provided, add it to the payload to reply in thread
+    if (thread_ts) {
+      messagePayload.thread_ts = thread_ts;
+    }
+    
+    await axios.post('https://slack.com/api/chat.postMessage', messagePayload, {
       headers: {
         'Authorization': `Bearer ${SLACK_BOT_TOKEN}`,
         'Content-Type': 'application/json'
@@ -286,26 +191,6 @@ async function sendSlackMessage(channelId, text) {
   } catch (error) {
     console.error('Error sending message to Slack:', error.message);
   }
-}
-
-// Helper function to format Bubble data for Slack
-function formatBubbleData(data, dataType) {
-  // Format the data based on the data type
-  // This is where you'll create nice-looking Slack messages
-  
-  if (!data || data.length === 0) {
-    return `No ${dataType} found.`;
-  }
-  
-  // Example formatting for a list of items
-  if (Array.isArray(data)) {
-    return `*${dataType.toUpperCase()}*:\n${data.map((item, index) => 
-      `${index + 1}. ${item.name || item.title || JSON.stringify(item)}`
-    ).join('\n')}`;
-  }
-  
-  // Default formatting for other data types
-  return `*${dataType.toUpperCase()}*:\n${JSON.stringify(data, null, 2)}`;
 }
 
 // Function to send a DM to a user
@@ -340,14 +225,20 @@ async function sendDirectMessage(userId, text) {
 
 // Endpoint for Bubble.io to trigger notifications to users
 app.post('/bubble/notify', async (req, res) => {
-  const { slackUserId, message } = req.body;
+  const { slackUserId, message, thread_ts } = req.body;
   
   if (!slackUserId || !message) {
     return res.status(400).json({ error: 'Missing required parameters' });
   }
   
   try {
-    await sendDirectMessage(slackUserId, message);
+    if (slackUserId.startsWith('C') || slackUserId.startsWith('G')) {
+      // This is a channel ID, not a user ID
+      await sendSlackMessage(slackUserId, message, thread_ts);
+    } else {
+      // This is a user ID, send a DM
+      await sendDirectMessage(slackUserId, message);
+    }
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('Error sending notification:', error);
@@ -355,7 +246,12 @@ app.post('/bubble/notify', async (req, res) => {
   }
 });
 
+// Simple health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', environment: IS_PRODUCTION ? 'production' : 'development' });
+});
+
 // Start the server
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT} in ${IS_PRODUCTION ? 'production' : 'development'} mode`);
 });
