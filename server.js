@@ -8,8 +8,8 @@ const PORT = process.env.PORT || 3000;
 // Your configuration - using environment variables
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
-const BUBBLE_API_URL = process.env.BUBBLE_API_URL;
-const BUBBLE_API_KEY = process.env.BUBBLE_API_KEY;
+const BUBBLE_API_URL = process.env.BUBBLE_API_URL || 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf';
+const BUBBLE_API_KEY = process.env.BUBBLE_API_KEY || '5f295f248f6872648f79cf0ff089cac0';
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -31,24 +31,25 @@ app.post('/slack/events', (req, res) => {
     return res.json({ challenge: req.body.challenge });
   }
   
-  // Once verified, normal event handling
-  if (req.body.event) {
-    console.log("Received event:", req.body.event.type);
+  // Respond quickly to acknowledge receipt
+  res.status(200).send();
+  
+  // Process the event (after sending response)
+  const event = req.body.event;
+  
+  // Log the event for debugging
+  if (event) {
+    console.log("Received event:", event.type);
     
     // Handle app_mention events (when someone @mentions the bot)
-    if (req.body.event.type === 'app_mention') {
+    if (event.type === 'app_mention') {
       try {
-        handleBotMention(req.body.event);
-        return res.status(200).send();
+        handleBotMention(event);
       } catch (error) {
         console.error('Error handling mention:', error);
-        return res.status(500).send();
       }
     }
   }
-  
-  // Default response for other events
-  return res.status(200).send();
 });
 
 // Function to handle when the bot is mentioned
@@ -83,12 +84,16 @@ async function handleFetchCommand(command, channelId) {
   const dataType = command.replace('fetch', '').trim();
   
   try {
+    console.log(`Attempting to fetch ${dataType} from Bubble`);
+    
     // Call Bubble.io API to get the requested data
-    const response = await axios.get(`${https://projectacular.bubbleapps.io/version-test/api/1.1/wf}/data/${dataType}`, {
+    const response = await axios.get(`${BUBBLE_API_URL}/data/${dataType}`, {
       headers: {
-        'Authorization': 'Bearer 5f295f248f6872648f79cf0ff089cac0'
+        'Authorization': `Bearer ${BUBBLE_API_KEY}`
       }
     });
+    
+    console.log(`Successfully fetched ${dataType} from Bubble`);
     
     // Format the response data for Slack
     const formattedData = formatBubbleData(response.data, dataType);
@@ -96,7 +101,7 @@ async function handleFetchCommand(command, channelId) {
     // Send the formatted data back to Slack
     await sendSlackMessage(channelId, formattedData);
   } catch (error) {
-    console.error(`Error fetching ${dataType} from Bubble:`, error);
+    console.error(`Error fetching ${dataType} from Bubble:`, error.message);
     await sendSlackMessage(channelId, `Error fetching ${dataType}. Please try again later.`);
   }
 }
@@ -107,19 +112,23 @@ async function handleActionCommand(command, channelId) {
   const action = command.replace('do', '').trim();
   
   try {
+    console.log(`Attempting to perform action ${action} in Bubble`);
+    
     // Call Bubble.io API to perform the action
-    const response = await axios.post(`${https://projectacular.bubbleapps.io/version-test/api/1.1/wf}/action/${action}`, {
+    const response = await axios.post(`${BUBBLE_API_URL}/action/${action}`, {
       // Include any parameters needed for the action
     }, {
       headers: {
-        'Authorization': 'Bearer 5f295f248f6872648f79cf0ff089cac0'
+        'Authorization': `Bearer ${BUBBLE_API_KEY}`
       }
     });
+    
+    console.log(`Action ${action} performed successfully`);
     
     // Send confirmation to Slack
     await sendSlackMessage(channelId, `Action "${action}" has been performed successfully!`);
   } catch (error) {
-    console.error(`Error performing action ${action} in Bubble:`, error);
+    console.error(`Error performing action ${action} in Bubble:`, error.message);
     await sendSlackMessage(channelId, `Error performing "${action}". Please try again later.`);
   }
 }
@@ -127,6 +136,8 @@ async function handleActionCommand(command, channelId) {
 // Helper function to send messages to Slack
 async function sendSlackMessage(channelId, text) {
   try {
+    console.log(`Sending message to channel ${channelId}`);
+    
     await axios.post('https://slack.com/api/chat.postMessage', {
       channel: channelId,
       text: text
@@ -136,8 +147,10 @@ async function sendSlackMessage(channelId, text) {
         'Content-Type': 'application/json'
       }
     });
+    
+    console.log('Message sent successfully');
   } catch (error) {
-    console.error('Error sending message to Slack:', error);
+    console.error('Error sending message to Slack:', error.message);
   }
 }
 
@@ -164,6 +177,8 @@ function formatBubbleData(data, dataType) {
 // Function to send a DM to a user
 async function sendDirectMessage(userId, text) {
   try {
+    console.log(`Opening DM with user ${userId}`);
+    
     // First, open a DM channel with the user
     const openResponse = await axios.post('https://slack.com/api/conversations.open', {
       users: userId
@@ -182,8 +197,10 @@ async function sendDirectMessage(userId, text) {
     
     // Then send the message to that channel
     await sendSlackMessage(dmChannelId, text);
+    
+    console.log(`DM sent successfully to user ${userId}`);
   } catch (error) {
-    console.error('Error sending DM:', error);
+    console.error('Error sending DM:', error.message);
   }
 }
 
