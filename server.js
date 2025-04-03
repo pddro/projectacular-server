@@ -8,6 +8,7 @@ const PORT = process.env.PORT || 3000;
 // Your configuration - using environment variables
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
+const SLACK_BOT_USER_ID = process.env.SLACK_BOT_USER_ID || 'U08M4BT9VEU'; // Your bot's user ID
 
 // Check for any production/live environment indicator
 // This handles multiple possible environment variable formats
@@ -79,60 +80,79 @@ async function handleBotMention(event) {
   
   console.log(`Raw message from Slack: "${text}"`);
   
-  // Find and extract the bot mention
-  const botMentionMatch = text.match(/<@([A-Z0-9]+)>/);
-  if (!botMentionMatch) {
-    console.log("Could not extract bot user ID from mention");
-    return;
-  }
-  
-  const botUserId = botMentionMatch[1];
+  // Use the bot's user ID from our configuration
+  const botUserId = SLACK_BOT_USER_ID;
   console.log(`Bot User ID: ${botUserId}`);
   
-  // Extract the message without the bot mention
-  // This keeps the raw format of other user mentions for Claude to process
-  const messageContent = text.replace(`<@${botUserId}>`, '').trim();
-  console.log(`Message without bot mention: "${messageContent}"`);
-  
-  // Extract all mentioned users (except the bot)
-  const mentionedUsers = [];
-  // This regex will find all user mentions in the format <@USERID>
+  // Extract all user mentions from the message
+  const allMentions = [];
   const mentionRegex = /<@([A-Z0-9]+)>/g;
+  let match;
   
-  // We use a different approach to find all matches
-  const matches = [...messageContent.matchAll(mentionRegex)];
-  console.log(`Found ${matches.length} user mentions in message`);
+  // Find all mentions in the message
+  while ((match = mentionRegex.exec(text)) !== null) {
+    allMentions.push({
+      id: match[1],
+      fullMatch: match[0],
+      index: match.index
+    });
+  }
   
-  for (const match of matches) {
-    const mentionedUserId = match[1];
-    // Skip the bot itself (although it should already be removed)
-    if (mentionedUserId !== botUserId) {
-      console.log(`Processing mentioned user: ${mentionedUserId}`);
+  console.log(`Found ${allMentions.length} total mentions in message`);
+  
+  // Create a copy of the message that we'll modify
+  let messageWithoutBotMention = text;
+  
+  // Remove the bot mention from the message
+  const botMention = allMentions.find(mention => mention.id === botUserId);
+  if (botMention) {
+    messageWithoutBotMention = messageWithoutBotMention.replace(botMention.fullMatch, '').trim();
+    console.log(`Removed bot mention. Message now: "${messageWithoutBotMention}"`);
+  } else {
+    console.log(`Warning: Could not find bot mention with ID ${botUserId} in the message`);
+    // Continue anyway as this might be a DM or other type of message
+  }
+  
+  // Now extract all user mentions (except the bot)
+  const mentionedUsers = [];
+  
+  // Process all mentions except the bot
+  for (const mention of allMentions) {
+    if (mention.id !== botUserId) {
+      console.log(`Processing mentioned user: ${mention.id}`);
       try {
         // Get user info from Slack
-        const userInfo = await getSlackUserInfo(mentionedUserId);
+        const userInfo = await getSlackUserInfo(mention.id);
         if (userInfo) {
-          console.log(`User info retrieved: ${userInfo.name || userInfo.real_name || 'Unknown'}`);
+          const userName = userInfo.real_name || userInfo.name || mention.id;
+          const userDisplayName = userInfo.profile && userInfo.profile.display_name 
+            ? userInfo.profile.display_name 
+            : userName;
+            
+          console.log(`User info retrieved: ${userName} (Display name: ${userDisplayName})`);
+          
           mentionedUsers.push({
-            id: mentionedUserId,
-            name: userInfo.real_name || userInfo.name || mentionedUserId
+            id: mention.id,
+            name: userName,
+            display_name: userDisplayName,
+            username: userInfo.name || ''
           });
         } else {
-          console.log(`No user info found for ID: ${mentionedUserId}`);
-          mentionedUsers.push({ id: mentionedUserId, name: mentionedUserId });
+          console.log(`No user info found for ID: ${mention.id}`);
+          mentionedUsers.push({ id: mention.id, name: mention.id });
         }
       } catch (error) {
-        console.error(`Error getting info for user ${mentionedUserId}:`, error.message);
-        // Still add the user ID even if we can't get their info
-        mentionedUsers.push({ id: mentionedUserId, name: mentionedUserId });
+        console.error(`Error getting info for user ${mention.id}:`, error.message);
+        mentionedUsers.push({ id: mention.id, name: mention.id });
       }
     }
   }
   
   console.log(`Forwarding message with ${mentionedUsers.length} mentioned users:`, JSON.stringify(mentionedUsers));
   
-  // Pass everything to Bubble - the original message content (with mentions intact) and mentioned users array
-  await forwardMessageToBubble(messageContent, userId, channelId, thread_ts, mentionedUsers);
+  // Send the raw message to Bubble along with the structured mentioned users
+  // This lets Claude see all the mentions in their raw format
+  await forwardMessageToBubble(messageWithoutBotMention, userId, channelId, thread_ts, mentionedUsers);
 }
 
 // Function to handle direct messages to the bot
