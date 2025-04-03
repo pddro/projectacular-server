@@ -132,29 +132,30 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
       thread_ts: thread_ts
     };
     
-    // Send to Bubble API
     // Log the exact URL and data being sent
     console.log(`Posting to Bubble URL: ${BUBBLE_API_URL}`);
     console.log(`Using API Key: ${BUBBLE_API_KEY.substring(0, 5)}...`);
     
-    // Try the request with multiple auth methods
+    let response;
     try {
-      const response = await axios.post(BUBBLE_API_URL, messageData, {
+      // First try: Bearer token method
+      response = await axios.post(BUBBLE_API_URL, messageData, {
         headers: {
           'Authorization': `Bearer ${BUBBLE_API_KEY}`,
           'Content-Type': 'application/json'
         }
       });
       console.log('Bubble response successful with Bearer token');
-      return response;
-    } catch (error) {
+    } catch (authError) {
       console.log('Bearer token auth failed, trying API key in URL...');
-      // Try alternative: API key as query parameter
-      const response = await axios.post(`${BUBBLE_API_URL}?api_key=${BUBBLE_API_KEY}`, messageData, {
+      // Second try: API key as query parameter
+      response = await axios.post(`${BUBBLE_API_URL}?api_key=${BUBBLE_API_KEY}`, messageData, {
         headers: {
           'Content-Type': 'application/json'
         }
       });
+      console.log('Bubble response successful with query parameter API key');
+    }
     
     console.log('Bubble response:', response.data);
     
