@@ -140,6 +140,7 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
     let response;
     try {
       // First try: Bearer token method
+      console.log('Attempting Bearer token authentication...');
       response = await axios.post(BUBBLE_API_URL, messageData, {
         headers: {
           'Authorization': `Bearer ${BUBBLE_API_KEY}`,
