@@ -5,10 +5,11 @@ const bodyParser = require('body-parser');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Your configuration
-const SLACK_BOT_TOKEN = 'xoxb-your-token-here';
-const BUBBLE_API_URL = 'https://your-bubble-app.bubbleapps.io/api';
-const SLACK_SIGNING_SECRET = 'your-slack-signing-secret';
+// Your configuration - using environment variables
+const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
+const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
+const BUBBLE_API_URL = process.env.BUBBLE_API_URL;
+const BUBBLE_API_KEY = process.env.BUBBLE_API_KEY;
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
