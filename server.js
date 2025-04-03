@@ -84,9 +84,9 @@ async function handleFetchCommand(command, channelId) {
   
   try {
     // Call Bubble.io API to get the requested data
-    const response = await axios.get(`${BUBBLE_API_URL}/data/${dataType}`, {
+    const response = await axios.get(`${https://projectacular.bubbleapps.io/version-test/api/1.1/wf}/data/${dataType}`, {
       headers: {
-        'Authorization': 'Bearer YOUR_BUBBLE_API_TOKEN'
+        'Authorization': 'Bearer 5f295f248f6872648f79cf0ff089cac0'
       }
     });
     
@@ -108,11 +108,11 @@ async function handleActionCommand(command, channelId) {
   
   try {
     // Call Bubble.io API to perform the action
-    const response = await axios.post(`${BUBBLE_API_URL}/action/${action}`, {
+    const response = await axios.post(`${https://projectacular.bubbleapps.io/version-test/api/1.1/wf}/action/${action}`, {
       // Include any parameters needed for the action
     }, {
       headers: {
-        'Authorization': 'Bearer YOUR_BUBBLE_API_TOKEN'
+        'Authorization': 'Bearer 5f295f248f6872648f79cf0ff089cac0'
       }
     });
     
