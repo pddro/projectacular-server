@@ -37,22 +37,33 @@ app.post('/slack/events', (req, res) => {
   // Process the event (after sending response)
   const event = req.body.event;
   
+  // If no event, return early
+  if (!event) {
+    return;
+  }
+  
   // Log the event for debugging
-  if (event) {
-    console.log("Received event:", event.type);
-    
-    // Handle app_mention events (when someone @mentions the bot)
+  console.log("Received event:", event.type);
+  
+  try {
+    // Handle app_mention events (when someone @mentions the bot in a channel)
     if (event.type === 'app_mention') {
-      try {
-        handleBotMention(event);
-      } catch (error) {
-        console.error('Error handling mention:', error);
-      }
+      handleBotMention(event);
     }
+    // Handle direct messages to the bot
+    else if (event.type === 'message' && event.channel_type === 'im') {
+      // Ignore messages from the bot itself to prevent loops
+      if (event.bot_id) {
+        return;
+      }
+      handleDirectMessage(event);
+    }
+  } catch (error) {
+    console.error('Error handling event:', error);
   }
 });
 
-// Function to handle when the bot is mentioned
+// Function to handle when the bot is mentioned in a channel
 async function handleBotMention(event) {
   // Extract the text after the bot mention
   const text = event.text;
@@ -60,21 +71,50 @@ async function handleBotMention(event) {
   const userId = event.user;
   
   // Parse the command from the message (remove the bot mention part)
-  // This is a simple example - you'll want more sophisticated parsing
   const botUserId = event.text.match(/<@([A-Z0-9]+)>/)[1];
   const command = text.replace(`<@${botUserId}>`, '').trim();
   
-  console.log(`Received command: "${command}" from user ${userId} in channel ${channelId}`);
+  console.log(`Received mention command: "${command}" from user ${userId} in channel ${channelId}`);
   
-  if (command.startsWith('fetch')) {
+  // Process the command
+  await processCommand(command, channelId, userId);
+}
+
+// Function to handle direct messages to the bot
+async function handleDirectMessage(event) {
+  const text = event.text;
+  const channelId = event.channel;
+  const userId = event.user;
+  
+  console.log(`Received DM: "${text}" from user ${userId} in channel ${channelId}`);
+  
+  // For DMs, we use the entire message as the command
+  await processCommand(text, channelId, userId);
+}
+
+// Process commands from both mentions and DMs
+async function processCommand(text, channelId, userId) {
+  if (text.startsWith('fetch')) {
     // Handle data fetching commands
-    await handleFetchCommand(command, channelId);
-  } else if (command.startsWith('do')) {
+    await handleFetchCommand(text, channelId);
+  } else if (text.startsWith('do')) {
     // Handle action commands
-    await handleActionCommand(command, channelId);
+    await handleActionCommand(text, channelId);
+  } else if (text.toLowerCase() === 'help') {
+    // Provide help information
+    await sendSlackMessage(channelId, 
+      "Here's how you can use me:\n\n" +
+      "• `fetch [data]` - Get data from Projectacular\n" +
+      "• `do [action]` - Perform an action in Projectacular\n\n" +
+      "For example:\n" +
+      "• `fetch tasks` - Get a list of tasks\n" +
+      "• `fetch projects` - Get a list of projects\n" +
+      "• `do create task \"New task name\"` - Create a new task"
+    );
   } else {
     // Unknown command
-    await sendSlackMessage(channelId, "Sorry, I didn't understand that command. Try 'fetch [data]' or 'do [action]'.");
+    await sendSlackMessage(channelId, 
+      "Sorry, I didn't understand that command. Try `fetch [data]`, `do [action]`, or type `help` for more information.");
   }
 }
 
