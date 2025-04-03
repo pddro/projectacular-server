@@ -71,7 +71,13 @@ async function handleBotMention(event) {
   const userId = event.user;
   
   // Parse the command from the message (remove the bot mention part)
-  const botUserId = event.text.match(/<@([A-Z0-9]+)>/)[1];
+  const botMentionMatch = event.text.match(/<@([A-Z0-9]+)>/);
+  if (!botMentionMatch) {
+    console.log("Could not extract bot user ID from mention");
+    return;
+  }
+  
+  const botUserId = botMentionMatch[1];
   const command = text.replace(`<@${botUserId}>`, '').trim();
   
   console.log(`Received mention command: "${command}" from user ${userId} in channel ${channelId}`);
@@ -97,6 +103,9 @@ async function processCommand(text, channelId, userId) {
   if (text.startsWith('fetch')) {
     // Handle data fetching commands
     await handleFetchCommand(text, channelId);
+  } else if (text.toLowerCase().startsWith('create task')) {
+    // Handle create task command
+    await handleCreateTaskCommand(text, channelId, userId);
   } else if (text.startsWith('do')) {
     // Handle action commands
     await handleActionCommand(text, channelId);
@@ -105,16 +114,101 @@ async function processCommand(text, channelId, userId) {
     await sendSlackMessage(channelId, 
       "Here's how you can use me:\n\n" +
       "• `fetch [data]` - Get data from Projectacular\n" +
+      "• `create task \"Task name\" [description]` - Create a new task\n" +
       "• `do [action]` - Perform an action in Projectacular\n\n" +
       "For example:\n" +
       "• `fetch tasks` - Get a list of tasks\n" +
       "• `fetch projects` - Get a list of projects\n" +
-      "• `do create task \"New task name\"` - Create a new task"
+      "• `create task \"New homepage design\" priority:high assignee:@john` - Create a new task"
     );
   } else {
     // Unknown command
     await sendSlackMessage(channelId, 
-      "Sorry, I didn't understand that command. Try `fetch [data]`, `do [action]`, or type `help` for more information.");
+      "Sorry, I didn't understand that command. Try `fetch [data]`, `create task [name]`, or type `help` for more information.");
+  }
+}
+
+// Handle create task commands
+async function handleCreateTaskCommand(command, channelId, userId) {
+  try {
+    console.log(`Processing create task command: ${command}`);
+    
+    // Extract task name using regex to handle quoted task names
+    // This regex looks for text between quotes after "create task"
+    const taskNameMatch = command.match(/create task\s+"([^"]+)"/i);
+    let taskName, taskDescription;
+    
+    if (taskNameMatch && taskNameMatch[1]) {
+      taskName = taskNameMatch[1].trim();
+      
+      // Anything after the quoted task name can be considered description or metadata
+      const afterTaskName = command.substring(command.indexOf(taskNameMatch[0]) + taskNameMatch[0].length).trim();
+      if (afterTaskName) {
+        taskDescription = afterTaskName;
+      }
+    } else {
+      // If no quoted task name, just take everything after "create task" as the name
+      taskName = command.replace(/create task/i, '').trim();
+      taskDescription = '';
+    }
+    
+    if (!taskName) {
+      await sendSlackMessage(channelId, "Please provide a task name. Example: `create task \"Design homepage\"`");
+      return;
+    }
+    
+    console.log(`Creating task "${taskName}" with description "${taskDescription || 'None'}"`);
+    
+    // Get user information to include in the task
+    const userInfo = await getSlackUserInfo(userId);
+    
+    // Prepare task data
+    const taskData = {
+      name: taskName,
+      description: taskDescription || '',
+      created_by: userId,
+      creator_name: userInfo ? userInfo.real_name || userInfo.name : userId,
+      created_from: 'slack',
+      channel_id: channelId
+    };
+    
+    // Send to Bubble API
+    const response = await axios.post(`${BUBBLE_API_URL}/create_task`, taskData, {
+      headers: {
+        'Authorization': `Bearer ${BUBBLE_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('Task creation response:', response.data);
+    
+    if (response.data && response.data.success) {
+      await sendSlackMessage(channelId, `✅ Task "${taskName}" created successfully! Task ID: ${response.data.task_id || 'N/A'}`);
+    } else {
+      throw new Error('Bubble API did not return success');
+    }
+  } catch (error) {
+    console.error('Error creating task:', error.message);
+    await sendSlackMessage(channelId, `⚠️ Error creating task: ${error.message}. Please try again later.`);
+  }
+}
+
+// Helper function to get Slack user information
+async function getSlackUserInfo(userId) {
+  try {
+    const response = await axios.get(`https://slack.com/api/users.info?user=${userId}`, {
+      headers: {
+        'Authorization': `Bearer ${SLACK_BOT_TOKEN}`
+      }
+    });
+    
+    if (response.data && response.data.ok && response.data.user) {
+      return response.data.user;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching user info:', error.message);
+    return null;
   }
 }
 
