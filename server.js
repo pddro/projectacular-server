@@ -21,7 +21,7 @@ const IS_PRODUCTION = ENV === 'production' ||
 console.log(`Running in ${IS_PRODUCTION ? 'PRODUCTION' : 'DEVELOPMENT'} mode`);
 
 // IMPORTANT: Hardcoded full URL to the correct endpoint
-const BUBBLE_API_URL = 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf/slack_message/';
+const BUBBLE_API_URL = 'https://projectacular.bubbleapps.io/version-live/api/1.1/wf/slack_message/';
 
 console.log(`Using Bubble API URL: ${BUBBLE_API_URL}`);
 
@@ -212,7 +212,7 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
     };
     
     // Double check the URL to make sure it's correct
-    const fullUrl = 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf/slack_message';
+    const fullUrl = 'https://projectacular.bubbleapps.io/version-live/api/1.1/wf/slack_message';
     console.log(`Posting to Bubble URL: ${fullUrl}`);
     console.log(`Using API Key: ${BUBBLE_API_KEY.substring(0, 5)}...`);
     console.log(`Full message data being sent:`, JSON.stringify(messageData, null, 2));
@@ -496,7 +496,7 @@ app.get('/slack/oauth_redirect', async (req, res) => {
     
     // Forward this information to Bubble
     try {
-      await axios.post('https://projectacular.bubbleapps.io/version-test/api/1.1/wf/slack_oauth', {
+      await axios.post('https://projectacular.bubbleapps.io/version-live/api/1.1/wf/slack_oauth', {
         team_id: teamId,
         team_name: teamName,
         user_id: userId,
@@ -512,7 +512,7 @@ app.get('/slack/oauth_redirect', async (req, res) => {
       console.log('OAuth data successfully sent to Bubble');
       
       // Redirect to success page
-      return res.redirect('https://projectacular.bubbleapps.io/version-test/slack/success');
+      return res.redirect('https://projectacular.bubbleapps.io/version-live/slack/success');
     } catch (bubbleError) {
       console.error('Error sending OAuth data to Bubble:', bubbleError);
       return res.status(500).send('Error connecting your Slack workspace to Projectacular');
