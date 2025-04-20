@@ -25,7 +25,7 @@ const BUBBLE_VERSION = BUBBLE_ENV === 'live' ? 'version-live' : 'version-test';
 
 // Dynamic Bubble API URL based on environment
 const BUBBLE_BASE_URL = `https://projectacular.bubbleapps.io/${BUBBLE_VERSION}/api/1.1/wf`;
-const BUBBLE_MESSAGE_ENDPOINT = `${BUBBLE_BASE_URL}/slack_message`;
+const BUBBLE_MESSAGE_ENDPOINT = `${BUBBLE_BASE_URL}/slack_message/`;
 
 console.log(`Using Bubble Environment: ${BUBBLE_ENV}`);
 console.log(`Using Bubble API URL: ${BUBBLE_MESSAGE_ENDPOINT}`);
