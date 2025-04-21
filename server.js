@@ -1,31 +1,13 @@
-// server.js - Slack Bot for Bubble.io Integration
-const express = require('express');
-const axios = require('axios');
-const bodyParser = require('body-parser');
-const app = express();
-const PORT = process.env.PORT || 3000;
-
 // Your configuration - using environment variables
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
 const SLACK_BOT_USER_ID = process.env.SLACK_BOT_USER_ID || 'U08M4BT9VEU'; // Your bot's user ID
 
-// Check for any production/live environment indicator
-// This handles multiple possible environment variable formats
-const ENV = (process.env.NODE_ENV || '').toLowerCase();
-const IS_PRODUCTION = ENV === 'production' || 
-                      ENV === 'live' || 
-                      process.env.ENVIRONMENT === 'PRODUCTION' || 
-                      process.env.ENVIRONMENT === 'LIVE';
-
-console.log(`Running in ${IS_PRODUCTION ? 'PRODUCTION' : 'DEVELOPMENT'} mode`);
-
-// IMPORTANT: Hardcoded full URL to the correct endpoint
-const BUBBLE_API_URL = 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf/slack_message/initialize';
-
-console.log(`Using Bubble API URL: ${BUBBLE_API_URL}`);
-
+// Get Bubble API configuration from environment variables
+const BUBBLE_API_URL = process.env.BUBBLE_API_URL || 'https://projectacular.bubbleapps.io/version-live/api/1.1/wf';
 const BUBBLE_API_KEY = process.env.BUBBLE_API_KEY || '5f295f248f6872648f79cf0ff089cac0';
+
+console.log(`Using Bubble API base URL: ${BUBBLE_API_URL}`);
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -201,9 +183,9 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
       mentioned_users: mentionedUsers // Include the mentioned users array
     };
     
-    // Double check the URL to make sure it's correct
-    const fullUrl = 'https://projectacular.bubbleapps.io/version-test/api/1.1/wf/slack_message';
-    console.log(`Posting to Bubble URL: ${fullUrl}`);
+// Use the base URL from environment variables and append the endpoint
+const fullUrl = `${BUBBLE_API_URL}/slack_message`;
+console.log(`Posting to Bubble URL: ${fullUrl}`);
     console.log(`Using API Key: ${BUBBLE_API_KEY.substring(0, 5)}...`);
     console.log(`Full message data being sent:`, JSON.stringify(messageData, null, 2));
     
