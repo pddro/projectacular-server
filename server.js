@@ -187,13 +187,13 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
     console.log(`Using API Key: ${BUBBLE_API_KEY.substring(0, 5)}...`);
     console.log(`Full message data being sent:`, JSON.stringify(messageData, null, 2));
     
-    // Use only the query parameter authentication method for Bubble
-    const url = `${fullUrl}?api_key=${BUBBLE_API_KEY}`;
-    console.log('Using query parameter authentication');
+    // Use Bearer token authentication exactly as Bubble documentation specifies
+    console.log('Using Bearer token authentication as specified in Bubble documentation');
     
     try {
-      const response = await axios.post(url, messageData, {
+      const response = await axios.post(fullUrl, messageData, {
         headers: {
+          'Authorization': `Bearer ${BUBBLE_API_KEY}`,
           'Content-Type': 'application/json'
         }
       });
@@ -215,6 +215,15 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
         console.error('Response data:', error.response.data);
         console.error('Response status:', error.response.status);
         console.error('Response headers:', error.response.headers);
+        
+        // If we get a 401 Unauthorized error, print more detailed debugging info
+        if (error.response.status === 401) {
+          console.error('Authentication failed. Check if:');
+          console.error('1. The API key is correct');
+          console.error('2. The API key has permission to access this workflow');
+          console.error('3. The Bubble workflow is published and accessible');
+          console.error(`4. Bearer token format is correct: "Bearer ${BUBBLE_API_KEY.substring(0, 5)}..."`);
+        }
       } else if (error.request) {
         console.error('No response received:', error.request);
       } else {
