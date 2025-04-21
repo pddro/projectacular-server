@@ -39,13 +39,17 @@ app.post('/slack/events', (req, res) => {
     return;
   }
   
+  // Extract the team_id from the request body
+  const teamId = req.body.team_id;
+  console.log("Team ID from request:", teamId);
+  
   // Log the event for debugging
   console.log("Received event:", event.type);
   
   try {
     // Handle app_mention events (when someone @mentions the bot in a channel)
     if (event.type === 'app_mention') {
-      handleBotMention(event);
+      handleBotMention(event, teamId);
     }
     // Handle direct messages to the bot
     else if (event.type === 'message' && event.channel_type === 'im') {
@@ -53,7 +57,7 @@ app.post('/slack/events', (req, res) => {
       if (event.bot_id) {
         return;
       }
-      handleDirectMessage(event);
+      handleDirectMessage(event, teamId);
     }
   } catch (error) {
     console.error('Error handling event:', error);
@@ -61,13 +65,14 @@ app.post('/slack/events', (req, res) => {
 });
 
 // Function to handle when the bot is mentioned in a channel
-async function handleBotMention(event) {
+async function handleBotMention(event, teamId) {
   const text = event.text;
   const channelId = event.channel;
   const userId = event.user;
   const thread_ts = event.thread_ts || event.ts;
   
   console.log(`Raw message from Slack: "${text}"`);
+  console.log(`Team ID: ${teamId}`);
   
   // Use the bot's user ID from our configuration
   const botUserId = SLACK_BOT_USER_ID;
@@ -141,29 +146,31 @@ async function handleBotMention(event) {
   
   // Send the raw message to Bubble along with the structured mentioned users
   // This lets Claude see all the mentions in their raw format
-  await forwardMessageToBubble(messageWithoutBotMention, userId, channelId, thread_ts, mentionedUsers);
+  await forwardMessageToBubble(messageWithoutBotMention, userId, channelId, thread_ts, mentionedUsers, teamId);
 }
 
 // Function to handle direct messages to the bot
-async function handleDirectMessage(event) {
+async function handleDirectMessage(event, teamId) {
   const text = event.text;
   const channelId = event.channel;
   const userId = event.user;
   const thread_ts = event.thread_ts || event.ts; // Use thread_ts if it exists, otherwise use ts
   
   console.log(`Received DM: "${text}" from user ${userId} in channel ${channelId}`);
+  console.log(`Team ID: ${teamId}`);
   
   // Forward the entire message to Bubble
-  await forwardMessageToBubble(text, userId, channelId, thread_ts, []);
+  await forwardMessageToBubble(text, userId, channelId, thread_ts, [], teamId);
 }
 
 // Forward message to Bubble and handle response
-async function forwardMessageToBubble(messageContent, userId, channelId, thread_ts, mentionedUsers = []) {
+async function forwardMessageToBubble(messageContent, userId, channelId, thread_ts, mentionedUsers = [], teamId) {
   try {
     console.log(`Forwarding message to Bubble: "${messageContent}"`);
     console.log(`Message sender: ${userId}`);
     console.log(`Message channel: ${channelId}`);
     console.log(`Thread timestamp: ${thread_ts || 'none'}`);
+    console.log(`Team ID: ${teamId || 'none'}`);
     console.log(`Mentioned users: ${JSON.stringify(mentionedUsers)}`);
     
     // Get user information to include with the message
@@ -178,6 +185,7 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
       user_name: userName,
       channel_id: channelId,
       thread_ts: thread_ts,
+      team_id: teamId,
       mentioned_users: mentionedUsers // Include the mentioned users array
     };
     
