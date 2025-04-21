@@ -1,3 +1,10 @@
+// server.js - Slack Bot for Bubble.io Integration
+const express = require('express');
+const axios = require('axios');
+const bodyParser = require('body-parser');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
 // Your configuration - using environment variables
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
@@ -44,17 +51,8 @@ app.post('/slack/events', (req, res) => {
     else if (event.type === 'message' && event.channel_type === 'im') {
       // Ignore messages from the bot itself to prevent loops
       if (event.bot_id) {
-        console.log(`Ignoring message from bot: ${event.bot_id}`);
         return;
       }
-      
-      // Check for automated message metadata or subtype
-      if ((event.subtype && event.subtype === 'bot_message') || 
-          (event.metadata && event.metadata.event_type === 'automated_notification')) {
-        console.log('Skipping automated message');
-        return;
-      }
-      
       handleDirectMessage(event);
     }
   } catch (error) {
@@ -183,9 +181,9 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
       mentioned_users: mentionedUsers // Include the mentioned users array
     };
     
-// Use the base URL from environment variables and append the endpoint
-const fullUrl = `${BUBBLE_API_URL}/slack_message`;
-console.log(`Posting to Bubble URL: ${fullUrl}`);
+    // Use the base URL from environment variables and append the endpoint
+    const fullUrl = `${BUBBLE_API_URL}/slack_message`;
+    console.log(`Posting to Bubble URL: ${fullUrl}`);
     console.log(`Using API Key: ${BUBBLE_API_KEY.substring(0, 5)}...`);
     console.log(`Full message data being sent:`, JSON.stringify(messageData, null, 2));
     
@@ -289,7 +287,7 @@ async function getSlackUserInfo(userId) {
 }
 
 // Helper function to send messages to Slack
-async function sendSlackMessage(channelId, text, thread_ts = null, isAutomated = false) {
+async function sendSlackMessage(channelId, text, thread_ts = null) {
   try {
     console.log(`Sending message to channel ${channelId}`);
     
@@ -297,13 +295,6 @@ async function sendSlackMessage(channelId, text, thread_ts = null, isAutomated =
       channel: channelId,
       text: text
     };
-    
-    // If this is an automated message, add metadata to mark it as such
-    if (isAutomated) {
-      messagePayload.metadata = {
-        event_type: "automated_notification"
-      };
-    }
     
     // If thread_ts is provided, add it to the payload to reply in thread
     if (thread_ts) {
@@ -324,7 +315,7 @@ async function sendSlackMessage(channelId, text, thread_ts = null, isAutomated =
 }
 
 // Function to send a DM to a user
-async function sendDirectMessage(userId, text, isAutomated = false) {
+async function sendDirectMessage(userId, text) {
   try {
     console.log(`Opening DM with user ${userId}`);
     
@@ -345,7 +336,7 @@ async function sendDirectMessage(userId, text, isAutomated = false) {
     const dmChannelId = openResponse.data.channel.id;
     
     // Then send the message to that channel
-    await sendSlackMessage(dmChannelId, text, null, isAutomated);
+    await sendSlackMessage(dmChannelId, text);
     
     console.log(`DM sent successfully to user ${userId}`);
   } catch (error) {
@@ -355,7 +346,7 @@ async function sendDirectMessage(userId, text, isAutomated = false) {
 
 // Endpoint for Bubble.io to trigger notifications to users
 app.post('/bubble/notify', async (req, res) => {
-  const { slackUserId, message, thread_ts, isAutomated = true } = req.body;
+  const { slackUserId, message, thread_ts } = req.body;
   
   if (!slackUserId || !message) {
     return res.status(400).json({ error: 'Missing required parameters' });
@@ -364,10 +355,10 @@ app.post('/bubble/notify', async (req, res) => {
   try {
     if (slackUserId.startsWith('C') || slackUserId.startsWith('G')) {
       // This is a channel ID, not a user ID
-      await sendSlackMessage(slackUserId, message, thread_ts, isAutomated);
+      await sendSlackMessage(slackUserId, message, thread_ts);
     } else {
       // This is a user ID, send a DM
-      await sendDirectMessage(slackUserId, message, isAutomated);
+      await sendDirectMessage(slackUserId, message);
     }
     res.status(200).json({ success: true });
   } catch (error) {
@@ -378,10 +369,10 @@ app.post('/bubble/notify', async (req, res) => {
 
 // Simple health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', environment: IS_PRODUCTION ? 'production' : 'development' });
+  res.status(200).json({ status: 'ok' });
 });
 
 // Start the server
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT} in ${IS_PRODUCTION ? 'production' : 'development'} mode`);
+  console.log(`Server is running on port ${PORT}`);
 });
