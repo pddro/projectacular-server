@@ -187,62 +187,44 @@ async function forwardMessageToBubble(messageContent, userId, channelId, thread_
     console.log(`Using API Key: ${BUBBLE_API_KEY.substring(0, 5)}...`);
     console.log(`Full message data being sent:`, JSON.stringify(messageData, null, 2));
     
-    let response;
+    // Use only the query parameter authentication method for Bubble
+    const url = `${fullUrl}?api_key=${BUBBLE_API_KEY}`;
+    console.log('Using query parameter authentication');
     
     try {
-      // First try: Bearer token method
-      console.log('Attempting Bearer token authentication...');
-      response = await axios.post(fullUrl, messageData, {
+      const response = await axios.post(url, messageData, {
         headers: {
-          'Authorization': `Bearer ${BUBBLE_API_KEY}`,
           'Content-Type': 'application/json'
         }
       });
-      console.log('Bubble response successful with Bearer token');
-    } catch (authError) {
-      console.log('Bearer token auth failed, trying API key in URL...');
-      // Log the full error for debugging
-      console.error('Auth Error:', authError.message);
-      if (authError.response) {
-        console.error('Error status:', authError.response.status);
-        console.error('Error data:', authError.response.data);
+      
+      console.log('Bubble response successful');
+      console.log('Bubble response:', response.data);
+      
+      // Check if Bubble returned a response to send back to Slack
+      if (response.data && response.data.status === 'success' && response.data.response && response.data.response.response) {
+        // Send the response back to Slack
+        await sendSlackMessage(channelId, response.data.response.response, thread_ts);
+      } else {
+        console.log('No response message from Bubble or unexpected response format');
+      }
+    } catch (error) {
+      // Log detailed error information
+      console.error('Error from Bubble API:');
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+        console.error('Response status:', error.response.status);
+        console.error('Response headers:', error.response.headers);
+      } else if (error.request) {
+        console.error('No response received:', error.request);
+      } else {
+        console.error('Error message:', error.message);
       }
       
-      // Second try: API key as query parameter
-      response = await axios.post(`${fullUrl}?api_key=${BUBBLE_API_KEY}`, messageData, {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      console.log('Bubble response successful with query parameter API key');
-    }
-    
-    console.log('Bubble response:', response.data);
-    
-    // Check if Bubble returned a response to send back to Slack
-    if (response.data && response.data.status === 'success' && response.data.response && response.data.response.response) {
-      // Send the response back to Slack
-      await sendSlackMessage(channelId, response.data.response.response, thread_ts);
-    } else {
-      console.log('No response message from Bubble or unexpected response format');
+      await sendSlackMessage(channelId, `Sorry, there was an error processing your request. Please try again later.`, thread_ts);
     }
   } catch (error) {
-    // Log detailed error information
-    console.error('Error forwarding message to Bubble:');
-    if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
-      console.error('Response data:', error.response.data);
-      console.error('Response status:', error.response.status);
-      console.error('Response headers:', error.response.headers);
-    } else if (error.request) {
-      // The request was made but no response was received
-      console.error('No response received:', error.request);
-    } else {
-      // Something happened in setting up the request that triggered an Error
-      console.error('Error message:', error.message);
-    }
-    
+    console.error('Error in forwardMessageToBubble function:', error.message);
     await sendSlackMessage(channelId, `Sorry, there was an error processing your request. Please try again later.`, thread_ts);
   }
 }
